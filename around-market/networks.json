@@ -1,0 +1,8 @@
+{
+  "arc-testnet": {
+    "PredictionMarketFactory": {
+      "address": "0xD316E250a5696ff1Ae2a002F1D3cD8c3FdB313ab",
+      "startBlock": 47412617
+    }
+  }
+}

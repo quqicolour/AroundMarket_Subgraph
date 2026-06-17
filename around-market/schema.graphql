@@ -1,0 +1,55 @@
+type FeeRecipientUpdated @entity(immutable: true) {
+  id: Bytes!
+  newRecipient: Bytes! # address
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type LuckyFeeUpdated @entity(immutable: true) {
+  id: Bytes!
+  newFee: BigInt! # uint32
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type MarketCreated @entity(immutable: true) {
+  id: Bytes!
+  marketId: BigInt! # uint64
+  market: Bytes! # address
+  collateral: Bytes! # address
+  conditionId: Bytes! # bytes32
+  question: String! # string
+  dataSource: String! # string
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type OwnershipTransferred @entity(immutable: true) {
+  id: Bytes!
+  previousOwner: Bytes! # address
+  newOwner: Bytes! # address
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type PlatformFeeUpdated @entity(immutable: true) {
+  id: Bytes!
+  newFee: BigInt! # uint32
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type TemplatesUpdated @entity(immutable: true) {
+  id: Bytes!
+  orderBook: Bytes! # address
+  matchingEngine: Bytes! # address
+  market: Bytes! # address
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}

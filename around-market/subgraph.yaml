@@ -1,0 +1,41 @@
+specVersion: 1.3.0
+indexerHints:
+  prune: auto
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum
+    name: PredictionMarketFactory
+    network: arc-testnet
+    source:
+      address: "0xD316E250a5696ff1Ae2a002F1D3cD8c3FdB313ab"
+      abi: PredictionMarketFactory
+      startBlock: 47412617
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - FeeRecipientUpdated
+        - LuckyFeeUpdated
+        - MarketCreated
+        - OwnershipTransferred
+        - PlatformFeeUpdated
+        - TemplatesUpdated
+      abis:
+        - name: PredictionMarketFactory
+          file: ./abis/PredictionMarketFactory.json
+      eventHandlers:
+        - event: FeeRecipientUpdated(indexed address)
+          handler: handleFeeRecipientUpdated
+        - event: LuckyFeeUpdated(uint32)
+          handler: handleLuckyFeeUpdated
+        - event: MarketCreated(indexed uint64,indexed address,address,bytes32,string,string)
+          handler: handleMarketCreated
+        - event: OwnershipTransferred(indexed address,indexed address)
+          handler: handleOwnershipTransferred
+        - event: PlatformFeeUpdated(uint32)
+          handler: handlePlatformFeeUpdated
+        - event: TemplatesUpdated(indexed address,indexed address,indexed address)
+          handler: handleTemplatesUpdated
+      file: ./src/prediction-market-factory.ts
