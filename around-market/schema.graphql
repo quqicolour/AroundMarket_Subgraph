@@ -53,3 +53,218 @@ type TemplatesUpdated @entity(immutable: true) {
   blockTimestamp: BigInt!
   transactionHash: Bytes!
 }
+
+type Market @entity(immutable: false) {
+  id: String!
+  marketId: BigInt!
+  creator: Bytes!
+  market: Bytes!
+  collateral: Bytes!
+  conditionTokens: Bytes!
+  orderBook: Bytes!
+  matchingEngine: Bytes!
+  conditionId: Bytes!
+  startTime: BigInt!
+  endTime: BigInt!
+  resolved: Boolean!
+  fee: BigInt!
+  question: String!
+  dataSource: String!
+  createdAtBlock: BigInt!
+  createdAtTimestamp: BigInt!
+  createdTxHash: Bytes!
+  orders: [LimitOrder!]! @derivedFrom(field: "market")
+  cancellations: [OrderCancellation!]! @derivedFrom(field: "market")
+  candles: [MarketCandle!]! @derivedFrom(field: "market")
+}
+
+enum CandleInterval {
+  ONE_MINUTE
+  FIFTEEN_MINUTES
+  THIRTY_MINUTES
+  ONE_HOUR
+  FOUR_HOURS
+  TWELVE_HOURS
+  ONE_DAY
+}
+
+type MarketCandle @entity(immutable: false) {
+  id: Bytes!
+  market: Market!
+  marketId: BigInt!
+  isYes: Boolean!
+  interval: CandleInterval!
+  intervalSeconds: BigInt!
+  periodStart: BigInt!
+  open: BigInt!
+  high: BigInt!
+  low: BigInt!
+  close: BigInt!
+  volume: BigInt!
+  shareVolume: BigInt!
+  tradeCount: BigInt!
+  firstBlockNumber: BigInt!
+  firstTimestamp: BigInt!
+  firstTxHash: Bytes!
+  lastBlockNumber: BigInt!
+  lastTimestamp: BigInt!
+  lastTxHash: Bytes!
+}
+
+enum LimitOrderStatus {
+  ACTIVE
+  PARTIALLY_FILLED
+  FILLED
+  CANCELLED
+}
+
+enum LimitOrderKind {
+  COLLATERAL_BUY
+  SHARE_SELL
+}
+
+type LimitOrder @entity(immutable: false) {
+  id: Bytes!
+  orderId: BigInt!
+  market: Market!
+  marketId: BigInt!
+  orderBook: Bytes!
+  maker: Bytes!
+  isYes: Boolean!
+  price: BigInt!
+  amount: BigInt!
+  filled: BigInt!
+  remaining: BigInt!
+  status: LimitOrderStatus!
+  kind: LimitOrderKind!
+  shareOutcomeIsYes: Boolean
+  createdAtBlock: BigInt!
+  createdAtTimestamp: BigInt!
+  createdTxHash: Bytes!
+  updatedAtBlock: BigInt!
+  updatedAtTimestamp: BigInt!
+  updatedTxHash: Bytes!
+  cancelledAtBlock: BigInt
+  cancelledAtTimestamp: BigInt
+  cancelledTxHash: Bytes
+}
+
+type OrderCancellation @entity(immutable: true) {
+  id: Bytes!
+  order: LimitOrder!
+  orderId: BigInt!
+  market: Market!
+  marketId: BigInt!
+  maker: Bytes
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type MarketCondition @entity(immutable: true) {
+  id: Bytes!
+  market: Market!
+  marketId: BigInt!
+}
+type ApprovalForAll @entity(immutable: true) {
+  id: Bytes!
+  account: Bytes! # address
+  operator: Bytes! # address
+  approved: Boolean! # bool
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type ConditionCreation @entity(immutable: true) {
+  id: Bytes!
+  conditionId: Bytes! # bytes32
+  oracle: Bytes! # address
+  questionId: Bytes! # bytes32
+  outcomeSlotCount: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type ConditionalTokensOwnershipTransferred @entity(immutable: true) {
+  id: Bytes!
+  previousOwner: Bytes! # address
+  newOwner: Bytes! # address
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type PayoutReported @entity(immutable: true) {
+  id: Bytes!
+  conditionId: Bytes! # bytes32
+  payoutNumerators: [BigInt!]! # uint256[]
+  winningPositionId: Bytes! # bytes32
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type PositionSplit @entity(immutable: true) {
+  id: Bytes!
+  conditionId: Bytes! # bytes32
+  holder: Bytes! # address
+  amount: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type PositionsMerged @entity(immutable: true) {
+  id: Bytes!
+  conditionId: Bytes! # bytes32
+  holder: Bytes! # address
+  amount: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type PositionsRedeemed @entity(immutable: true) {
+  id: Bytes!
+  conditionId: Bytes! # bytes32
+  owner: Bytes! # address
+  indexSet: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type TransferBatch @entity(immutable: true) {
+  id: Bytes!
+  operator: Bytes! # address
+  from: Bytes! # address
+  to: Bytes! # address
+  ids: [BigInt!]! # uint256[]
+  values: [BigInt!]! # uint256[]
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type TransferSingle @entity(immutable: true) {
+  id: Bytes!
+  operator: Bytes! # address
+  from: Bytes! # address
+  to: Bytes! # address
+  internal_id: BigInt! # uint256
+  value: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type URI @entity(immutable: true) {
+  id: Bytes!
+  value: String! # string
+  internal_id: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}

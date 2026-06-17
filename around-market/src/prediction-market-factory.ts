@@ -4,16 +4,24 @@ import {
   MarketCreated as MarketCreatedEvent,
   OwnershipTransferred as OwnershipTransferredEvent,
   PlatformFeeUpdated as PlatformFeeUpdatedEvent,
+  PredictionMarketFactory,
   TemplatesUpdated as TemplatesUpdatedEvent
 } from "../generated/PredictionMarketFactory/PredictionMarketFactory"
+import { DataSourceContext, log } from "@graphprotocol/graph-ts"
 import {
   FeeRecipientUpdated,
   LuckyFeeUpdated,
+  Market,
+  MarketCondition,
   MarketCreated,
   OwnershipTransferred,
   PlatformFeeUpdated,
   TemplatesUpdated
 } from "../generated/schema"
+import {
+  Market as MarketTemplate,
+  OrderBook as OrderBookTemplate
+} from "../generated/templates"
 
 export function handleFeeRecipientUpdated(
   event: FeeRecipientUpdatedEvent
@@ -59,6 +67,49 @@ export function handleMarketCreated(event: MarketCreatedEvent): void {
   entity.transactionHash = event.transaction.hash
 
   entity.save()
+
+  let factory = PredictionMarketFactory.bind(event.address)
+  let marketResult = factory.try_getMarket(event.params.marketId)
+  if (marketResult.reverted) {
+    log.warning("Skip Market entity creation: getMarket reverted. marketId={}, tx={}", [
+      event.params.marketId.toString(),
+      event.transaction.hash.toHexString()
+    ])
+    return
+  }
+
+  let data = marketResult.value
+  let marketEntity = new Market(event.params.marketId.toString())
+  marketEntity.marketId = event.params.marketId
+  marketEntity.creator = data.creator
+  marketEntity.market = data.market
+  marketEntity.collateral = data.collateral
+  marketEntity.conditionTokens = data.conditionTokens
+  marketEntity.orderBook = data.orderBook
+  marketEntity.matchingEngine = data.matchingEngine
+  marketEntity.conditionId = data.conditionId
+  marketEntity.startTime = data.startTime
+  marketEntity.endTime = data.endTime
+  marketEntity.resolved = data.resolved
+  marketEntity.fee = data.fee
+  marketEntity.question = data.question
+  marketEntity.dataSource = data.dataSource
+  marketEntity.createdAtBlock = event.block.number
+  marketEntity.createdAtTimestamp = event.block.timestamp
+  marketEntity.createdTxHash = event.transaction.hash
+  marketEntity.save()
+
+  let condition = new MarketCondition(data.conditionId)
+  condition.market = marketEntity.id
+  condition.marketId = event.params.marketId
+  condition.save()
+
+  let context = new DataSourceContext()
+  context.setString("marketEntityId", marketEntity.id)
+  context.setString("marketId", event.params.marketId.toString())
+
+  MarketTemplate.createWithContext(data.market, context)
+  OrderBookTemplate.createWithContext(data.orderBook, context)
 }
 
 export function handleOwnershipTransferred(

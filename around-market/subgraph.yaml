@@ -39,3 +39,93 @@ dataSources:
         - event: TemplatesUpdated(indexed address,indexed address,indexed address)
           handler: handleTemplatesUpdated
       file: ./src/prediction-market-factory.ts
+  - kind: ethereum
+    name: ConditionalTokens
+    network: arc-testnet
+    source:
+      address: "0xD91517C321847AFB18cacf02D5305aeBc6eF8c38"
+      abi: ConditionalTokens
+      startBlock: 47412617
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - ApprovalForAll
+        - ConditionCreation
+        - ConditionalTokensOwnershipTransferred
+        - PayoutReported
+        - PositionSplit
+        - PositionsMerged
+        - PositionsRedeemed
+        - TransferBatch
+        - TransferSingle
+        - URI
+      abis:
+        - name: ConditionalTokens
+          file: ./abis/ConditionalTokens.json
+      eventHandlers:
+        - event: ApprovalForAll(indexed address,indexed address,bool)
+          handler: handleApprovalForAll
+        - event: ConditionCreation(indexed bytes32,indexed address,bytes32,uint256)
+          handler: handleConditionCreation
+        - event: OwnershipTransferred(indexed address,indexed address)
+          handler: handleOwnershipTransferred
+        - event: PayoutReported(indexed bytes32,uint256[],bytes32)
+          handler: handlePayoutReported
+        - event: PositionSplit(indexed bytes32,indexed address,uint256)
+          handler: handlePositionSplit
+        - event: PositionsMerged(indexed bytes32,indexed address,uint256)
+          handler: handlePositionsMerged
+        - event: PositionsRedeemed(indexed bytes32,indexed address,uint256)
+          handler: handlePositionsRedeemed
+        - event: TransferBatch(indexed address,indexed address,indexed address,uint256[],uint256[])
+          handler: handleTransferBatch
+        - event: TransferSingle(indexed address,indexed address,indexed address,uint256,uint256)
+          handler: handleTransferSingle
+        - event: URI(string,indexed uint256)
+          handler: handleURI
+      file: ./src/conditional-tokens.ts
+templates:
+  - kind: ethereum/contract
+    name: Market
+    network: arc-testnet
+    source:
+      abi: Market
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - LimitOrder
+      abis:
+        - name: Market
+          file: ./abis/Market.json
+      eventHandlers:
+        - event: ShareSellOrderPlaced(indexed address,bool,uint128,uint128,indexed uint64)
+          handler: handleShareSellOrderPlaced
+      file: ./src/market.ts
+  - kind: ethereum/contract
+    name: OrderBook
+    network: arc-testnet
+    source:
+      abi: OrderBook
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - LimitOrder
+        - OrderCancellation
+        - MarketCandle
+      abis:
+        - name: OrderBook
+          file: ./abis/OrderBook.json
+      eventHandlers:
+        - event: OrderPlaced(indexed uint64,indexed uint64,indexed address,bool,uint128,uint128)
+          handler: handleOrderPlaced
+        - event: OrderCancelled(indexed uint64)
+          handler: handleOrderCancelled
+        - event: OrderFilled(indexed uint64,uint128,uint128)
+          handler: handleOrderFilled
+      file: ./src/order-book.ts
