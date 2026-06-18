@@ -1,77 +1,46 @@
+import { BigInt, DataSourceContext, log } from "@graphprotocol/graph-ts"
 import {
   FeeRecipientUpdated as FeeRecipientUpdatedEvent,
   LuckyFeeUpdated as LuckyFeeUpdatedEvent,
   MarketCreated as MarketCreatedEvent,
-  OwnershipTransferred as OwnershipTransferredEvent,
   PlatformFeeUpdated as PlatformFeeUpdatedEvent,
   PredictionMarketFactory,
   TemplatesUpdated as TemplatesUpdatedEvent
 } from "../generated/PredictionMarketFactory/PredictionMarketFactory"
-import { DataSourceContext, log } from "@graphprotocol/graph-ts"
+import { ConditionalTokens } from "../generated/PredictionMarketFactory/ConditionalTokens"
+import { Market, PositionToken } from "../generated/schema"
 import {
-  FeeRecipientUpdated,
-  LuckyFeeUpdated,
-  Market,
-  MarketCondition,
-  MarketCreated,
-  OwnershipTransferred,
-  PlatformFeeUpdated,
-  TemplatesUpdated
-} from "../generated/schema"
-import {
+  MatchingEngine as MatchingEngineTemplate,
   Market as MarketTemplate,
   OrderBook as OrderBookTemplate
 } from "../generated/templates"
+import {
+  ensureProtocol,
+  marketIdString,
+  outcomeFromIndex,
+  ZERO
+} from "./helpers"
 
-export function handleFeeRecipientUpdated(
-  event: FeeRecipientUpdatedEvent
+function registerPositionToken(
+  tokenId: BigInt,
+  market: Market,
+  outcomeIndex: BigInt
 ): void {
-  let entity = new FeeRecipientUpdated(
-    event.transaction.hash.concatI32(event.logIndex.toI32())
-  )
-  entity.newRecipient = event.params.newRecipient
-
-  entity.blockNumber = event.block.number
-  entity.blockTimestamp = event.block.timestamp
-  entity.transactionHash = event.transaction.hash
-
-  entity.save()
-}
-
-export function handleLuckyFeeUpdated(event: LuckyFeeUpdatedEvent): void {
-  let entity = new LuckyFeeUpdated(
-    event.transaction.hash.concatI32(event.logIndex.toI32())
-  )
-  entity.newFee = event.params.newFee
-
-  entity.blockNumber = event.block.number
-  entity.blockTimestamp = event.block.timestamp
-  entity.transactionHash = event.transaction.hash
-
-  entity.save()
+  let token = new PositionToken(tokenId.toString())
+  token.tokenId = tokenId
+  token.market = market.id
+  token.marketId = market.marketId
+  token.conditionId = market.conditionId
+  token.outcomeIndex = outcomeIndex
+  token.outcome = outcomeFromIndex(outcomeIndex)
+  token.save()
 }
 
 export function handleMarketCreated(event: MarketCreatedEvent): void {
-  let entity = new MarketCreated(
-    event.transaction.hash.concatI32(event.logIndex.toI32())
-  )
-  entity.marketId = event.params.marketId
-  entity.market = event.params.market
-  entity.collateral = event.params.collateral
-  entity.conditionId = event.params.conditionId
-  entity.question = event.params.question
-  entity.dataSource = event.params.dataSource
-
-  entity.blockNumber = event.block.number
-  entity.blockTimestamp = event.block.timestamp
-  entity.transactionHash = event.transaction.hash
-
-  entity.save()
-
   let factory = PredictionMarketFactory.bind(event.address)
   let marketResult = factory.try_getMarket(event.params.marketId)
   if (marketResult.reverted) {
-    log.warning("Skip Market entity creation: getMarket reverted. marketId={}, tx={}", [
+    log.warning("getMarket reverted for marketId={}, tx={}", [
       event.params.marketId.toString(),
       event.transaction.hash.toHexString()
     ])
@@ -79,79 +48,92 @@ export function handleMarketCreated(event: MarketCreatedEvent): void {
   }
 
   let data = marketResult.value
-  let marketEntity = new Market(event.params.marketId.toString())
-  marketEntity.marketId = event.params.marketId
-  marketEntity.creator = data.creator
-  marketEntity.market = data.market
-  marketEntity.collateral = data.collateral
-  marketEntity.conditionTokens = data.conditionTokens
-  marketEntity.orderBook = data.orderBook
-  marketEntity.matchingEngine = data.matchingEngine
-  marketEntity.conditionId = data.conditionId
-  marketEntity.startTime = data.startTime
-  marketEntity.endTime = data.endTime
-  marketEntity.resolved = data.resolved
-  marketEntity.fee = data.fee
-  marketEntity.question = data.question
-  marketEntity.dataSource = data.dataSource
-  marketEntity.createdAtBlock = event.block.number
-  marketEntity.createdAtTimestamp = event.block.timestamp
-  marketEntity.createdTxHash = event.transaction.hash
-  marketEntity.save()
+  let id = marketIdString(event.params.marketId)
+  let market = new Market(id)
+  market.marketId = event.params.marketId
+  market.creator = data.creator
+  market.market = data.market
+  market.collateral = data.collateral
+  market.conditionalTokens = data.conditionTokens
+  market.settlementManager = null
+  market.orderBook = data.orderBook
+  market.matchingEngine = data.matchingEngine
+  market.conditionId = data.conditionId
+  market.startTime = data.startTime
+  market.endTime = data.endTime
+  market.fee = data.fee
+  market.question = data.question
+  market.dataSource = data.dataSource
+  market.resolved = data.resolved
+  market.payoutNumerators = null
+  market.payoutDenominator = null
+  market.winningOutcome = null
+  market.createdAtBlock = event.block.number
+  market.createdAtTimestamp = event.block.timestamp
+  market.createdTxHash = event.transaction.hash
+  market.resolvedAtBlock = null
+  market.resolvedAtTimestamp = null
+  market.resolvedTxHash = null
+  market.orderCount = ZERO
+  market.activeOrderCount = ZERO
+  market.tradeCount = ZERO
+  market.volume = ZERO
+  market.shareVolume = ZERO
+  market.yesVolume = ZERO
+  market.noVolume = ZERO
+  market.latestPrice = null
+  market.latestYesPrice = null
+  market.latestNoPrice = null
+  market.save()
 
-  let condition = new MarketCondition(data.conditionId)
-  condition.market = marketEntity.id
-  condition.marketId = event.params.marketId
-  condition.save()
+  let ct = ConditionalTokens.bind(data.conditionTokens)
+  let yesId = ct.try_getPositionId(data.conditionId, BigInt.fromI32(0))
+  if (!yesId.reverted) {
+    let yesTokenId = BigInt.fromUnsignedBytes(yesId.value)
+    market.yesPositionId = yesTokenId
+    registerPositionToken(yesTokenId, market, BigInt.fromI32(0))
+  }
+  let noId = ct.try_getPositionId(data.conditionId, BigInt.fromI32(1))
+  if (!noId.reverted) {
+    let noTokenId = BigInt.fromUnsignedBytes(noId.value)
+    market.noPositionId = noTokenId
+    registerPositionToken(noTokenId, market, BigInt.fromI32(1))
+  }
+  market.save()
+
+  let protocol = ensureProtocol(event.address, event)
+  protocol.conditionalTokens = data.conditionTokens
+  protocol.marketCount = protocol.marketCount.plus(BigInt.fromI32(1))
+  protocol.save()
 
   let context = new DataSourceContext()
-  context.setString("marketEntityId", marketEntity.id)
   context.setString("marketId", event.params.marketId.toString())
+  context.setString("marketEntityId", id)
 
   MarketTemplate.createWithContext(data.market, context)
   OrderBookTemplate.createWithContext(data.orderBook, context)
+  MatchingEngineTemplate.createWithContext(data.matchingEngine, context)
 }
 
-export function handleOwnershipTransferred(
-  event: OwnershipTransferredEvent
-): void {
-  let entity = new OwnershipTransferred(
-    event.transaction.hash.concatI32(event.logIndex.toI32())
-  )
-  entity.previousOwner = event.params.previousOwner
-  entity.newOwner = event.params.newOwner
-
-  entity.blockNumber = event.block.number
-  entity.blockTimestamp = event.block.timestamp
-  entity.transactionHash = event.transaction.hash
-
-  entity.save()
+export function handleFeeRecipientUpdated(event: FeeRecipientUpdatedEvent): void {
+  let protocol = ensureProtocol(event.address, event)
+  protocol.feeRecipient = event.params.newRecipient
+  protocol.save()
 }
 
 export function handlePlatformFeeUpdated(event: PlatformFeeUpdatedEvent): void {
-  let entity = new PlatformFeeUpdated(
-    event.transaction.hash.concatI32(event.logIndex.toI32())
-  )
-  entity.newFee = event.params.newFee
+  let protocol = ensureProtocol(event.address, event)
+  protocol.platformFee = event.params.newFee
+  protocol.save()
+}
 
-  entity.blockNumber = event.block.number
-  entity.blockTimestamp = event.block.timestamp
-  entity.transactionHash = event.transaction.hash
-
-  entity.save()
+export function handleLuckyFeeUpdated(event: LuckyFeeUpdatedEvent): void {
+  let protocol = ensureProtocol(event.address, event)
+  protocol.luckyFee = event.params.newFee
+  protocol.save()
 }
 
 export function handleTemplatesUpdated(event: TemplatesUpdatedEvent): void {
-  let entity = new TemplatesUpdated(
-    event.transaction.hash.concatI32(event.logIndex.toI32())
-  )
-  entity.orderBook = event.params.orderBook
-  entity.matchingEngine = event.params.matchingEngine
-  entity.market = event.params.market
-
-  entity.blockNumber = event.block.number
-  entity.blockTimestamp = event.block.timestamp
-  entity.transactionHash = event.transaction.hash
-
-  entity.save()
+  let protocol = ensureProtocol(event.address, event)
+  protocol.save()
 }

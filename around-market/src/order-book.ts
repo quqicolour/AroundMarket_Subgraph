@@ -1,225 +1,149 @@
-import { BigInt, ByteArray, Bytes, crypto, dataSource, log } from "@graphprotocol/graph-ts"
+import { BigInt, dataSource, log } from "@graphprotocol/graph-ts"
 import {
   OrderCancelled as OrderCancelledEvent,
   OrderFilled as OrderFilledEvent,
   OrderPlaced as OrderPlacedEvent
 } from "../generated/templates/OrderBook/OrderBook"
-import { LimitOrder, Market, MarketCandle, OrderCancellation } from "../generated/schema"
+import { Market, Order, OrderFill } from "../generated/schema"
+import {
+  collateralVolume,
+  ensureUser,
+  eventId,
+  orderIdString,
+  outcomeFromIsYes,
+  ZERO
+} from "./helpers"
 
-const ONE_E18 = BigInt.fromString("1000000000000000000")
-const ONE = BigInt.fromI32(1)
-
-function marketEntityId(): string {
+function currentMarketId(): string {
   return dataSource.context().getString("marketEntityId")
 }
 
-function entityBytesId(value: string): Bytes {
-  return Bytes.fromByteArray(crypto.keccak256(ByteArray.fromUTF8(value)))
-}
-
-function orderEntityId(marketId: BigInt, orderId: BigInt): Bytes {
-  return entityBytesId("order-" + marketId.toString() + "-" + orderId.toString())
-}
-
-function currentOrderEntityId(orderId: BigInt): Bytes {
-  return entityBytesId("order-" + marketEntityId() + "-" + orderId.toString())
-}
-
-function candleSideId(isYes: boolean): string {
-  return isYes ? "YES" : "NO"
-}
-
-function candleId(
-  marketId: BigInt,
-  isYes: boolean,
-  interval: string,
-  periodStart: BigInt
-): string {
-  return marketId.toString() + "-" + candleSideId(isYes) + "-" + interval + "-" + periodStart.toString()
-}
-
-function candleEntityId(
-  marketId: BigInt,
-  isYes: boolean,
-  interval: string,
-  periodStart: BigInt
-): Bytes {
-  return entityBytesId("candle-" + candleId(marketId, isYes, interval, periodStart))
-}
-
-function bucketStart(timestamp: BigInt, intervalSeconds: BigInt): BigInt {
-  return timestamp.div(intervalSeconds).times(intervalSeconds)
-}
-
-function updateCandle(
-  order: LimitOrder,
-  event: OrderFilledEvent,
-  interval: string,
-  intervalSeconds: BigInt
-): void {
-  let periodStart = bucketStart(event.block.timestamp, intervalSeconds)
-  let id = candleEntityId(order.marketId, order.isYes, interval, periodStart)
-  let candle = MarketCandle.load(id)
-  let price = event.params.fillPrice
-  let shareVolume = event.params.fillAmount
-  let volume = shareVolume.times(price).div(ONE_E18)
-
-  if (candle == null) {
-    candle = new MarketCandle(id)
-    candle.market = order.market
-    candle.marketId = order.marketId
-    candle.isYes = order.isYes
-    candle.interval = interval
-    candle.intervalSeconds = intervalSeconds
-    candle.periodStart = periodStart
-    candle.open = price
-    candle.high = price
-    candle.low = price
-    candle.close = price
-    candle.volume = volume
-    candle.shareVolume = shareVolume
-    candle.tradeCount = ONE
-    candle.firstBlockNumber = event.block.number
-    candle.firstTimestamp = event.block.timestamp
-    candle.firstTxHash = event.transaction.hash
-  } else {
-    if (price.gt(candle.high)) {
-      candle.high = price
-    }
-    if (price.lt(candle.low)) {
-      candle.low = price
-    }
-    candle.close = price
-    candle.volume = candle.volume.plus(volume)
-    candle.shareVolume = candle.shareVolume.plus(shareVolume)
-    candle.tradeCount = candle.tradeCount.plus(ONE)
-  }
-
-  candle.lastBlockNumber = event.block.number
-  candle.lastTimestamp = event.block.timestamp
-  candle.lastTxHash = event.transaction.hash
-  candle.save()
-}
-
-function updateAllCandles(order: LimitOrder, event: OrderFilledEvent): void {
-  updateCandle(order, event, "ONE_MINUTE", BigInt.fromI32(60))
-  updateCandle(order, event, "FIFTEEN_MINUTES", BigInt.fromI32(900))
-  updateCandle(order, event, "THIRTY_MINUTES", BigInt.fromI32(1800))
-  updateCandle(order, event, "ONE_HOUR", BigInt.fromI32(3600))
-  updateCandle(order, event, "FOUR_HOURS", BigInt.fromI32(14400))
-  updateCandle(order, event, "TWELVE_HOURS", BigInt.fromI32(43200))
-  updateCandle(order, event, "ONE_DAY", BigInt.fromI32(86400))
-}
-
 export function handleOrderPlaced(event: OrderPlacedEvent): void {
-  let marketId = event.params.marketId.toString()
-  let market = Market.load(marketId)
+  let market = Market.load(event.params.marketId.toString())
   if (market == null) {
-    log.warning("Skip OrderPlaced: market entity is missing. marketId={}, orderId={}, tx={}", [
-      marketId,
-      event.params.id.toString(),
-      event.transaction.hash.toHexString()
+    log.warning("OrderPlaced skipped: missing market marketId={}, orderId={}", [
+      event.params.marketId.toString(),
+      event.params.id.toString()
     ])
     return
   }
 
-  let entity = new LimitOrder(
-    orderEntityId(event.params.marketId, event.params.id)
-  )
+  let maker = ensureUser(event.params.maker)
+  let order = new Order(orderIdString(event.params.marketId, event.params.id))
+  order.orderId = event.params.id
+  order.market = market.id
+  order.marketId = event.params.marketId
+  order.orderBook = event.address
+  order.maker = event.params.maker
+  order.makerUser = maker.id
+  order.isYes = event.params.isYes
+  order.outcome = outcomeFromIsYes(event.params.isYes)
+  order.price = event.params.price
+  order.amount = event.params.amount
+  order.filled = ZERO
+  order.remaining = event.params.amount
+  order.status = "ACTIVE"
+  order.kind = "COLLATERAL_BUY"
+  order.shareOutcome = null
+  order.createdAtBlock = event.block.number
+  order.createdAtTimestamp = event.block.timestamp
+  order.createdTxHash = event.transaction.hash
+  order.updatedAtBlock = event.block.number
+  order.updatedAtTimestamp = event.block.timestamp
+  order.updatedTxHash = event.transaction.hash
+  order.cancelledAtBlock = null
+  order.cancelledAtTimestamp = null
+  order.cancelledTxHash = null
+  order.save()
 
-  entity.orderId = event.params.id
-  entity.market = market.id
-  entity.marketId = event.params.marketId
-  entity.orderBook = event.address
-  entity.maker = event.params.maker
-  entity.isYes = event.params.isYes
-  entity.price = event.params.price
-  entity.amount = event.params.amount
-  entity.filled = BigInt.zero()
-  entity.remaining = event.params.amount
-  entity.status = "ACTIVE"
-  entity.kind = "COLLATERAL_BUY"
-  entity.createdAtBlock = event.block.number
-  entity.createdAtTimestamp = event.block.timestamp
-  entity.createdTxHash = event.transaction.hash
-  entity.updatedAtBlock = event.block.number
-  entity.updatedAtTimestamp = event.block.timestamp
-  entity.updatedTxHash = event.transaction.hash
+  maker.orderCount = maker.orderCount.plus(BigInt.fromI32(1))
+  maker.save()
 
-  entity.save()
+  market.orderCount = market.orderCount.plus(BigInt.fromI32(1))
+  market.activeOrderCount = market.activeOrderCount.plus(BigInt.fromI32(1))
+  market.save()
 }
 
 export function handleOrderCancelled(event: OrderCancelledEvent): void {
-  let id = currentOrderEntityId(event.params.id)
-  let entity = LimitOrder.load(id)
-  if (entity == null) {
-    log.warning("Skip OrderCancelled: order entity is missing. marketId={}, orderId={}, tx={}", [
-      marketEntityId(),
-      event.params.id.toString(),
-      event.transaction.hash.toHexString()
+  let id = orderIdString(BigInt.fromString(currentMarketId()), event.params.id)
+  let order = Order.load(id)
+  if (order == null) {
+    log.warning("OrderCancelled skipped: missing order marketId={}, orderId={}", [
+      currentMarketId(),
+      event.params.id.toString()
     ])
     return
   }
 
-  entity.status = "CANCELLED"
-  entity.remaining = entity.amount.minus(entity.filled)
-  entity.updatedAtBlock = event.block.number
-  entity.updatedAtTimestamp = event.block.timestamp
-  entity.updatedTxHash = event.transaction.hash
-  entity.cancelledAtBlock = event.block.number
-  entity.cancelledAtTimestamp = event.block.timestamp
-  entity.cancelledTxHash = event.transaction.hash
-  entity.save()
+  let wasActive = order.status == "ACTIVE" || order.status == "PARTIALLY_FILLED"
+  order.status = "CANCELLED"
+  order.remaining = order.amount.minus(order.filled)
+  order.updatedAtBlock = event.block.number
+  order.updatedAtTimestamp = event.block.timestamp
+  order.updatedTxHash = event.transaction.hash
+  order.cancelledAtBlock = event.block.number
+  order.cancelledAtTimestamp = event.block.timestamp
+  order.cancelledTxHash = event.transaction.hash
+  order.save()
 
-  let cancellation = new OrderCancellation(
-    event.transaction.hash.concatI32(event.logIndex.toI32())
-  )
-  cancellation.order = entity.id
-  cancellation.orderId = entity.orderId
-  cancellation.market = entity.market
-  cancellation.marketId = entity.marketId
-  cancellation.maker = entity.maker
-  cancellation.blockNumber = event.block.number
-  cancellation.blockTimestamp = event.block.timestamp
-  cancellation.transactionHash = event.transaction.hash
-  cancellation.save()
+  if (wasActive) {
+    let market = Market.load(order.market)
+    if (market != null && market.activeOrderCount.gt(ZERO)) {
+      market.activeOrderCount = market.activeOrderCount.minus(BigInt.fromI32(1))
+      market.save()
+    }
+  }
 }
 
 export function handleOrderFilled(event: OrderFilledEvent): void {
-  let entity = LimitOrder.load(currentOrderEntityId(event.params.orderId))
-  if (entity == null) {
-    log.warning("Skip OrderFilled: order entity is missing. marketId={}, orderId={}, tx={}", [
-      marketEntityId(),
-      event.params.orderId.toString(),
-      event.transaction.hash.toHexString()
+  let id = orderIdString(BigInt.fromString(currentMarketId()), event.params.orderId)
+  let order = Order.load(id)
+  if (order == null) {
+    log.warning("OrderFilled skipped: missing order marketId={}, orderId={}", [
+      currentMarketId(),
+      event.params.orderId.toString()
     ])
     return
   }
 
-  let market = Market.load(entity.market)
-  if (market == null) {
-    log.warning("Skip OrderFilled: market entity is missing. marketId={}, orderId={}, tx={}", [
-      entity.market,
-      event.params.orderId.toString(),
-      event.transaction.hash.toHexString()
-    ])
-    return
-  }
+  let fill = new OrderFill(eventId(event))
+  fill.order = order.id
+  fill.orderId = order.orderId
+  fill.market = order.market
+  fill.marketId = order.marketId
+  fill.maker = order.maker
+  fill.makerUser = order.makerUser
+  fill.isYes = order.isYes
+  fill.outcome = order.outcome
+  fill.price = event.params.fillPrice
+  fill.amount = event.params.fillAmount
+  fill.collateralVolume = collateralVolume(event.params.fillPrice, event.params.fillAmount)
+  fill.blockNumber = event.block.number
+  fill.blockTimestamp = event.block.timestamp
+  fill.transactionHash = event.transaction.hash
+  fill.logIndex = event.logIndex
+  fill.save()
 
-  updateAllCandles(entity, event)
-
-  entity.filled = entity.filled.plus(event.params.fillAmount)
-  if (entity.filled.ge(entity.amount)) {
-    entity.filled = entity.amount
-    entity.remaining = BigInt.zero()
-    entity.status = "FILLED"
+  let wasActive = order.status == "ACTIVE" || order.status == "PARTIALLY_FILLED"
+  order.filled = order.filled.plus(event.params.fillAmount)
+  if (order.filled.ge(order.amount)) {
+    order.filled = order.amount
+    order.remaining = ZERO
+    order.status = "FILLED"
   } else {
-    entity.remaining = entity.amount.minus(entity.filled)
-    entity.status = "PARTIALLY_FILLED"
+    order.remaining = order.amount.minus(order.filled)
+    order.status = "PARTIALLY_FILLED"
   }
+  order.updatedAtBlock = event.block.number
+  order.updatedAtTimestamp = event.block.timestamp
+  order.updatedTxHash = event.transaction.hash
+  order.save()
 
-  entity.updatedAtBlock = event.block.number
-  entity.updatedAtTimestamp = event.block.timestamp
-  entity.updatedTxHash = event.transaction.hash
-  entity.save()
+  if (wasActive && order.status == "FILLED") {
+    let market = Market.load(order.market)
+    if (market != null && market.activeOrderCount.gt(ZERO)) {
+      market.activeOrderCount = market.activeOrderCount.minus(BigInt.fromI32(1))
+      market.save()
+    }
+  }
 }

@@ -8,7 +8,7 @@ dataSources:
     name: PredictionMarketFactory
     network: arc-testnet
     source:
-      address: "0xD316E250a5696ff1Ae2a002F1D3cD8c3FdB313ab"
+      address: "0x532C9455d213802b30ea0d53A55B730315A62dBc"
       abi: PredictionMarketFactory
       startBlock: 47412617
     mapping:
@@ -16,15 +16,14 @@ dataSources:
       apiVersion: 0.0.9
       language: wasm/assemblyscript
       entities:
-        - FeeRecipientUpdated
-        - LuckyFeeUpdated
-        - MarketCreated
-        - OwnershipTransferred
-        - PlatformFeeUpdated
-        - TemplatesUpdated
+        - Protocol
+        - Market
+        - PositionToken
       abis:
         - name: PredictionMarketFactory
           file: ./abis/PredictionMarketFactory.json
+        - name: ConditionalTokens
+          file: ./abis/ConditionalTokens.json
       eventHandlers:
         - event: FeeRecipientUpdated(indexed address)
           handler: handleFeeRecipientUpdated
@@ -32,8 +31,6 @@ dataSources:
           handler: handleLuckyFeeUpdated
         - event: MarketCreated(indexed uint64,indexed address,address,bytes32,string,string)
           handler: handleMarketCreated
-        - event: OwnershipTransferred(indexed address,indexed address)
-          handler: handleOwnershipTransferred
         - event: PlatformFeeUpdated(uint32)
           handler: handlePlatformFeeUpdated
         - event: TemplatesUpdated(indexed address,indexed address,indexed address)
@@ -43,7 +40,7 @@ dataSources:
     name: ConditionalTokens
     network: arc-testnet
     source:
-      address: "0xD91517C321847AFB18cacf02D5305aeBc6eF8c38"
+      address: "0xCA483FbA80931C18CdE752c35d547c7e5BF57d6b"
       abi: ConditionalTokens
       startBlock: 47412617
     mapping:
@@ -51,41 +48,47 @@ dataSources:
       apiVersion: 0.0.9
       language: wasm/assemblyscript
       entities:
-        - ApprovalForAll
-        - ConditionCreation
-        - ConditionalTokensOwnershipTransferred
-        - PayoutReported
-        - PositionSplit
-        - PositionsMerged
-        - PositionsRedeemed
-        - TransferBatch
-        - TransferSingle
-        - URI
+        - User
+        - UserPosition
+        - PositionToken
       abis:
         - name: ConditionalTokens
           file: ./abis/ConditionalTokens.json
       eventHandlers:
-        - event: ApprovalForAll(indexed address,indexed address,bool)
-          handler: handleApprovalForAll
-        - event: ConditionCreation(indexed bytes32,indexed address,bytes32,uint256)
-          handler: handleConditionCreation
-        - event: OwnershipTransferred(indexed address,indexed address)
-          handler: handleOwnershipTransferred
-        - event: PayoutReported(indexed bytes32,uint256[],bytes32)
-          handler: handlePayoutReported
-        - event: PositionSplit(indexed bytes32,indexed address,uint256)
-          handler: handlePositionSplit
-        - event: PositionsMerged(indexed bytes32,indexed address,uint256)
-          handler: handlePositionsMerged
-        - event: PositionsRedeemed(indexed bytes32,indexed address,uint256)
-          handler: handlePositionsRedeemed
         - event: TransferBatch(indexed address,indexed address,indexed address,uint256[],uint256[])
           handler: handleTransferBatch
         - event: TransferSingle(indexed address,indexed address,indexed address,uint256,uint256)
           handler: handleTransferSingle
-        - event: URI(string,indexed uint256)
-          handler: handleURI
       file: ./src/conditional-tokens.ts
+  - kind: ethereum
+    name: SettlementManager
+    network: arc-testnet
+    source:
+      address: "0xBF53f4405399f2ae04Bafd4c40780BAf6E405Cb0"
+      abi: SettlementManager
+      startBlock: 47412617
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - Protocol
+        - Market
+        - MarketResolution
+        - Redemption
+        - User
+        - UserPosition
+      abis:
+        - name: SettlementManager
+          file: ./abis/SettlementManager.json
+      eventHandlers:
+        - event: MarketRegistered(indexed uint64,indexed address)
+          handler: handleMarketRegistered
+        - event: MarketResolved(indexed uint64,indexed bytes32,uint256[],uint256)
+          handler: handleMarketResolved
+        - event: Redeemed(indexed address,indexed uint64,bytes32,uint256)
+          handler: handleRedeemed
+      file: ./src/settlement-manager.ts
 templates:
   - kind: ethereum/contract
     name: Market
@@ -97,13 +100,19 @@ templates:
       apiVersion: 0.0.9
       language: wasm/assemblyscript
       entities:
-        - LimitOrder
+        - Order
+        - Trade
+        - MarketCandle
       abis:
         - name: Market
           file: ./abis/Market.json
       eventHandlers:
+        - event: OrderFilled(indexed address,bool,uint128,uint128)
+          handler: handleOrderFilled
         - event: ShareSellOrderPlaced(indexed address,bool,uint128,uint128,indexed uint64)
           handler: handleShareSellOrderPlaced
+        - event: Redeemed(indexed address,indexed bytes32)
+          handler: handleRedeemedNotice
       file: ./src/market.ts
   - kind: ethereum/contract
     name: OrderBook
@@ -115,9 +124,9 @@ templates:
       apiVersion: 0.0.9
       language: wasm/assemblyscript
       entities:
-        - LimitOrder
-        - OrderCancellation
-        - MarketCandle
+        - Order
+        - OrderFill
+        - Market
       abis:
         - name: OrderBook
           file: ./abis/OrderBook.json
@@ -129,3 +138,24 @@ templates:
         - event: OrderFilled(indexed uint64,uint128,uint128)
           handler: handleOrderFilled
       file: ./src/order-book.ts
+  - kind: ethereum/contract
+    name: MatchingEngine
+    network: arc-testnet
+    source:
+      abi: MatchingEngineEvents
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - MatchExecution
+      abis:
+        - name: MatchingEngineEvents
+          file: ./abis/MatchingEngineEvents.json
+      eventHandlers:
+        - event: MatchExecuted(indexed uint64,indexed address,uint128,uint128,uint128)
+          handler: handleMatchExecuted
+      file: ./src/matching-engine.ts
+
+
+

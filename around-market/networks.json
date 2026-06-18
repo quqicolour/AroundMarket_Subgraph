@@ -1,11 +1,19 @@
 {
   "arc-testnet": {
     "PredictionMarketFactory": {
-      "address": "0xD316E250a5696ff1Ae2a002F1D3cD8c3FdB313ab",
+      "address": "0x532C9455d213802b30ea0d53A55B730315A62dBc",
       "startBlock": 47412617
     },
     "ConditionalTokens": {
-      "address": "0xD91517C321847AFB18cacf02D5305aeBc6eF8c38"
+      "address": "0xCA483FbA80931C18CdE752c35d547c7e5BF57d6b",
+      "startBlock": 47412617
+    },
+    "SettlementManager": {
+      "address": "0xBF53f4405399f2ae04Bafd4c40780BAf6E405Cb0",
+      "startBlock": 47412617
+    },
+    "Collateral": {
+      "address": "0x2375504de874C2262776F640389bF31437627260"
     }
   }
 }
